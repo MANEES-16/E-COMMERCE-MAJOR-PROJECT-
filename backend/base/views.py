@@ -6,6 +6,7 @@ from rest_framework import status
 
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -19,245 +20,296 @@ from .serializers import (
     OrderSerializer,
 )
 
-# ---------- JWT Login ----------
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-  def validate(self, attrs):
-      data = super().validate(attrs)
-      serializer = UserSerializerWithToken(self.user).data
-      for k, v in serializer.items():
-          data[k] = v
-      return data
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        serializer = UserSerializerWithToken(self.user).data
+        for key, value in serializer.items():
+            data[key] = value
+        return data
+
 
 class MyTokenObtainPairView(TokenObtainPairView):
-  serializer_class = MyTokenObtainPairSerializer
+    serializer_class = MyTokenObtainPairSerializer
 
-
-# ---------- User / Auth Views ----------
 
 @api_view(['POST'])
 def registerUser(request):
-  data = request.data
-  try:
-      user = User.objects.create(
-          first_name=data['name'],
-          username=data['email'],
-          email=data['email'],
-          password=make_password(data['password']),
-      )
-      serializer = UserSerializerWithToken(user, many=False)
-      return Response(serializer.data)
-  except:
-      message = {'detail': 'User with this email already exists'}
-      return Response(message, status=status.HTTP_400_BAD_REQUEST)
+    data = request.data
+    email = data.get('email')
+    password = data.get('password')
+    name = data.get('name', '')
+
+    if not email or not password:
+        return Response(
+            {'detail': 'Email and password are required'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response(
+            {'detail': 'User with this email already exists'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.create(
+        first_name=name,
+        username=email,
+        email=email,
+        password=make_password(password),
+    )
+
+    serializer = UserSerializerWithToken(user, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def getUserProfile(request):
-  user = request.user
-  serializer = UserSerializer(user, many=False)
-  return Response(serializer.data)
+    user = request.user
+    serializer = UserSerializer(user, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def updateUserProfile(request):
-  user = request.user
-  data = request.data
+    user = request.user
+    data = request.data
 
-  user.first_name = data.get('name', user.first_name)
-  user.username = data.get('email', user.username)
-  user.email = data.get('email', user.email)
+    user.first_name = data.get('name', user.first_name)
+    user.username = data.get('email', user.username)
+    user.email = data.get('email', user.email)
 
-  if data.get('password'):
-      user.password = make_password(data['password'])
+    if data.get('password'):
+        user.password = make_password(data['password'])
 
-  user.save()
-  serializer = UserSerializerWithToken(user, many=False)
-  return Response(serializer.data)
+    user.save()
+    serializer = UserSerializerWithToken(user, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def getUsers(request):
-  users = User.objects.all()
-  serializer = UserSerializer(users, many=True)
-  return Response(serializer.data)
+    users = User.objects.all()
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def getUserById(request, pk):
-  user = User.objects.get(id=pk)
-  serializer = UserSerializer(user, many=False)
-  return Response(serializer.data)
+    user = get_object_or_404(User, id=pk)
+    serializer = UserSerializer(user, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAdminUser])
 def updateUser(request, pk):
-  user = User.objects.get(id=pk)
-  data = request.data
+    user = get_object_or_404(User, id=pk)
+    data = request.data
 
-  user.first_name = data['name']
-  user.username = data['email']
-  user.email = data['email']
-  user.is_staff = data['isAdmin']
+    user.first_name = data.get('name', user.first_name)
+    user.username = data.get('email', user.username)
+    user.email = data.get('email', user.email)
+    user.is_staff = data.get('isAdmin', user.is_staff)
 
-  user.save()
-  serializer = UserSerializer(user, many=False)
-  return Response(serializer.data)
+    user.save()
+    serializer = UserSerializer(user, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
 def deleteUser(request, pk):
-  user = User.objects.get(id=pk)
-  user.delete()
-  return Response({'detail': 'User deleted'})
+    user = get_object_or_404(User, id=pk)
+    user.delete()
+    return Response({'detail': 'User deleted'})
 
-
-# ---------- Product Views ----------
 
 @api_view(['GET'])
 def getProducts(request):
-  products = Product.objects.all()
-  serializer = ProductSerializer(products, many=True)
-  return Response(serializer.data)
+    products = Product.objects.all().order_by('-createdAt')
+    serializer = ProductSerializer(products, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 def getProduct(request, pk):
-  product = Product.objects.get(_id=pk)
-  serializer = ProductSerializer(product, many=False)
-  return Response(serializer.data)
+    product = get_object_or_404(Product, _id=pk)
+    serializer = ProductSerializer(product, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def createProduct(request):
-  user = request.user
-  data = request.data
+    user = request.user
+    data = request.data
 
-  product = Product.objects.create(
-      user=user,
-      name=data.get('name', 'Sample Name'),
-      price=data.get('price', 0),
-      brand=data.get('brand', ''),
-      category=data.get('category', ''),
-      description=data.get('description', ''),
-      countInStock=data.get('countInStock', 0),
-      image=data.get('image', ''),
-  )
-  serializer = ProductSerializer(product, many=False)
-  return Response(serializer.data)
+    product = Product.objects.create(
+        user=user,
+        name=data.get('name', 'Sample Name'),
+        price=data.get('price', 0),
+        brand=data.get('brand', ''),
+        category=data.get('category', ''),
+        description=data.get('description', ''),
+        countInStock=data.get('countInStock', 0),
+        image=data.get('image', ''),
+    )
+
+    serializer = ProductSerializer(product, many=False)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAdminUser])
 def updateProduct(request, pk):
-  data = request.data
-  product = Product.objects.get(_id=pk)
+    data = request.data
+    product = get_object_or_404(Product, _id=pk)
 
-  product.name = data['name']
-  product.price = data['price']
-  product.brand = data['brand']
-  product.category = data['category']
-  product.description = data['description']
-  product.countInStock = data['countInStock']
-  product.image = data['image']
+    product.name = data.get('name', product.name)
+    product.price = data.get('price', product.price)
+    product.brand = data.get('brand', product.brand)
+    product.category = data.get('category', product.category)
+    product.description = data.get('description', product.description)
+    product.countInStock = data.get('countInStock', product.countInStock)
+    product.image = data.get('image', product.image)
 
-  product.save()
-  serializer = ProductSerializer(product, many=False)
-  return Response(serializer.data)
+    product.save()
+    serializer = ProductSerializer(product, many=False)
+    return Response(serializer.data)
+
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
 def deleteProduct(request, pk):
-  product = Product.objects.get(_id=pk)
-  product.delete()
-  return Response({'detail': 'Product Deleted'})
+    product = get_object_or_404(Product, _id=pk)
+    product.delete()
+    return Response({'detail': 'Product Deleted'})
 
-
-# ---------- Order Views ----------
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def addOrderItems(request):
-  user = request.user
-  data = request.data
+    user = request.user
+    data = request.data
 
-  orderItems = data['orderItems']
+    order_items = data.get('orderItems')
 
-  if not orderItems or len(orderItems) == 0:
-      return Response({'detail': 'No Order Items'}, status=status.HTTP_400_BAD_REQUEST)
+    if not order_items:
+        return Response({'detail': 'No Order Items'}, status=status.HTTP_400_BAD_REQUEST)
 
-  # 1. Create order
-  order = Order.objects.create(
-      user=user,
-      paymentMethod=data['paymentMethod'],
-      taxPrice=data['taxPrice'],
-      shippingPrice=data['shippingPrice'],
-      totalPrice=data['totalPrice'],
-  )
+    validated_items = []
+    for incoming in order_items:
+        product = get_object_or_404(Product, _id=incoming.get('product'))
 
-  # 2. Shipping address
-  ShippingAddress.objects.create(
-      order=order,
-      address=data['shippingAddress']['address'],
-      city=data['shippingAddress']['city'],
-      postalCode=data['shippingAddress']['postalCode'],
-      country=data['shippingAddress']['country'],
-      shippingPrice=data['shippingPrice'],
-  )
+        qty = int(incoming.get('qty', 0))
+        if qty <= 0:
+            return Response(
+                {'detail': 'Quantity must be greater than zero'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-  # 3. Create order items & update stock
-  for i in orderItems:
-      product = Product.objects.get(_id=i['product'])
+        if product.countInStock < qty:
+            return Response(
+                {'detail': f"{product.name} does not have enough stock"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-      item = OrderItem.objects.create(
-          product=product,
-          order=order,
-          name=product.name,
-          qty=i['qty'],
-          price=i['price'],
-          image=product.image,
-      )
+        validated_items.append(
+            {
+                'product': product,
+                'qty': qty,
+                'price': incoming.get('price', product.price),
+            }
+        )
 
-      product.countInStock -= item.qty
-      product.save()
+    order = Order.objects.create(
+        user=user,
+        paymentMethod=data.get('paymentMethod', ''),
+        taxPrice=data.get('taxPrice', 0),
+        shippingPrice=data.get('shippingPrice', 0),
+        totalPrice=data.get('totalPrice', 0),
+    )
 
-  serializer = OrderSerializer(order, many=False)
-  return Response(serializer.data)
+    shipping_address = data.get('shippingAddress', {})
+    ShippingAddress.objects.create(
+        order=order,
+        address=shipping_address.get('address', ''),
+        city=shipping_address.get('city', ''),
+        postalCode=shipping_address.get('postalCode', ''),
+        country=shipping_address.get('country', ''),
+        shippingPrice=data.get('shippingPrice', 0),
+    )
+
+    for item in validated_items:
+        OrderItem.objects.create(
+            product=item['product'],
+            order=order,
+            name=item['product'].name,
+            qty=item['qty'],
+            price=item['price'],
+            image=item['product'].image,
+        )
+
+        product = item['product']
+        product.countInStock -= item['qty']
+        product.save(update_fields=['countInStock'])
+
+    serializer = OrderSerializer(order, many=False)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def getMyOrders(request):
-  user = request.user
-  orders = user.order_set.all()
-  serializer = OrderSerializer(orders, many=True)
-  return Response(serializer.data)
+    user = request.user
+    orders = user.order_set.all()
+    serializer = OrderSerializer(orders, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def getOrderById(request, pk):
-  user = request.user
-  order = Order.objects.get(_id=pk)
+    user = request.user
+    order = get_object_or_404(Order, _id=pk)
 
-  if user.is_staff or order.user == user:
-      serializer = OrderSerializer(order, many=False)
-      return Response(serializer.data)
-  else:
-      return Response(
-          {'detail': 'Not authorized to view this order'},
-          status=status.HTTP_400_BAD_REQUEST,
-      )
+    if user.is_staff or order.user == user:
+        serializer = OrderSerializer(order, many=False)
+        return Response(serializer.data)
+
+    return Response(
+        {'detail': 'Not authorized to view this order'},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def getOrders(request):
-  orders = Order.objects.all()
-  serializer = OrderSerializer(orders, many=True)
-  return Response(serializer.data)
+    orders = Order.objects.all().order_by('-createdAt')
+    serializer = OrderSerializer(orders, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def updateOrderToPaid(request, pk):
-  order = Order.objects.get(_id=pk)
-  order.isPaid = True
-  order.paidAt = timezone.now()
-  order.save()
-  serializer = OrderSerializer(order, many=False)
-  return Response(serializer.data)
+    order = get_object_or_404(Order, _id=pk)
+
+    if not (request.user.is_staff or order.user == request.user):
+        return Response(
+            {'detail': 'Not authorized to update this order'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    order.isPaid = True
+    order.paidAt = timezone.now()
+    order.save()
+    serializer = OrderSerializer(order, many=False)
+    return Response(serializer.data)

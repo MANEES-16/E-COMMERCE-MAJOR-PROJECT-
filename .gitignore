@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+.env
+.env.local
+*.pyo
+*.pyd
+*.pdb
+
+# Django
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# Logs
+*.log
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Node / React
+node_modules/
+frontend/build/
+frontend/.env
+frontend/.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage / Reports
+htmlcov/
+.coverage*
+.pytest_cache/
+pytestdebug.log
+
+# Misc
+*.pot
+*.pyc
